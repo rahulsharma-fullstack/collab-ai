@@ -21,6 +21,18 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
 app.use('/auth', require('./routes/auth'));
 app.use('/ai', require('./routes/ai'));
 
+// Make sure this route is defined before socket.io setup
+app.get('/messages', async (req, res) => {
+  const Message = require('./models/Message');
+  try {
+    const messages = await Message.find().sort({ timestamp: 1 }).limit(50);
+    res.json(messages);
+  } catch (err) {
+    console.error('Error fetching messages:', err);
+    res.status(500).send('Error fetching messages');
+  }
+});
+
 // Socket.IO for real-time messaging
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);

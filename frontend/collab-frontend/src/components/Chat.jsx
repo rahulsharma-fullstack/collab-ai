@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import axios from 'axios';
+import { Button, TextField, Box, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 
 const socket = io(import.meta.env.VITE_API_URL);
 
 const Chat = () => {
+  const navigate = useNavigate();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -43,6 +46,26 @@ const Chat = () => {
     return () => clearTimeout(timer);
   }, [input]);
 
+  useEffect(() => {
+    const loadMessages = async () => {
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_API_URL}/messages`);
+        if (Array.isArray(res.data)) {
+          setMessages(res.data);
+        }
+      } catch (err) {
+        console.error('Error loading messages:', err);
+      }
+    };
+    
+    loadMessages();
+    
+    // Socket event listener
+    socket.on('message', (msg) => setMessages((prev) => [...prev, msg]));
+    
+    return () => socket.off('message');
+  }, []);
+
   const sendMessage = () => {
     if (input.trim()) {
       socket.emit('message', { text: input, user: 'me' });
@@ -64,44 +87,71 @@ const Chat = () => {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    navigate('/');
+  };
+
   return (
-    <div>
-      <h2>Chat</h2>
-      <div style={{ height: '300px', overflowY: 'scroll', border: '1px solid #ccc', padding: '10px', marginBottom: '10px' }}>
+    <Box sx={{ maxWidth: 600, margin: 'auto', padding: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Typography variant="h4">Chat</Typography>
+        <Button 
+          variant="outlined" 
+          color="error" 
+          onClick={handleLogout}
+        >
+          Logout
+        </Button>
+      </Box>
+      <Box sx={{ 
+        height: '300px', 
+        overflowY: 'auto', 
+        border: '1px solid #ccc', 
+        padding: 1,
+        mb: 2,
+        borderRadius: 1
+      }}>
         {messages.map((msg, i) => (
-          <p key={i} style={{ margin: '5px 0' }}>
+          <Typography key={i} sx={{ mb: 1 }}>
             <strong>{msg.user}:</strong> {msg.text}
-          </p>
+          </Typography>
         ))}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Type a message"
-            style={{ flex: 1, padding: '8px' }}
-          />
-          <button onClick={sendMessage}>Send</button>
-        </div>
+      </Box>
+      <TextField
+        fullWidth
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyPress={handleKeyPress}
+        placeholder="Type a message"
+        variant="outlined"
+        size="small"
+        sx={{ mb: 1 }}
+      />
+      <Button 
+        variant="contained" 
+        onClick={sendMessage} 
+        sx={{ mb: 2 }}
+      >
+        Send
+      </Button>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
         {isLoading ? (
-          <div>Loading suggestions...</div>
+          <Typography color="text.secondary">Loading suggestions...</Typography>
         ) : (
-          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-            {suggestions.map((sug, i) => (
-              <button 
-                key={i} 
-                onClick={() => sendSuggestion(sug)}
-                style={{ fontSize: '0.9em' }}
-              >
-                {sug}
-              </button>
-            ))}
-          </div>
+          suggestions.map((sug, i) => (
+            <Button 
+              key={i} 
+              variant="outlined" 
+              onClick={() => sendSuggestion(sug)}
+              size="small"
+            >
+              {sug}
+            </Button>
+          ))
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   );
 };
 
