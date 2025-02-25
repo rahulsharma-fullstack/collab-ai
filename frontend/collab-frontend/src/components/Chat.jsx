@@ -8,6 +8,7 @@ const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     socket.on('message', (msg) => setMessages((prev) => [...prev, msg]));
@@ -16,19 +17,34 @@ const Chat = () => {
 
   const fetchSuggestions = async (msg) => {
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL}/ai/smart-reply`, { message: msg });
+      setIsLoading(true);
+      const res = await axios.post(`${import.meta.env.VITE_API_URL}/ai/smart-reply`, { 
+        message: msg 
+      });
       setSuggestions(res.data);
     } catch (err) {
-      console.error('Error fetching suggestions', err);
+      console.error('Error fetching suggestions:', err);
+      setSuggestions(['Reply...']);
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // Debounce the API calls to prevent too many requests
   useEffect(() => {
-    if (input) fetchSuggestions(input);
+    const timer = setTimeout(() => {
+      if (input.trim()) {
+        fetchSuggestions(input);
+      } else {
+        setSuggestions([]);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [input]);
 
   const sendMessage = () => {
-    if (input) {
+    if (input.trim()) {
       socket.emit('message', { text: input, user: 'me' });
       setInput('');
       setSuggestions([]);
@@ -41,26 +57,49 @@ const Chat = () => {
     setSuggestions([]);
   };
 
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   return (
     <div>
       <h2>Chat</h2>
-      <div style={{ height: '300px', overflowY: 'scroll', border: '1px solid #ccc' }}>
+      <div style={{ height: '300px', overflowY: 'scroll', border: '1px solid #ccc', padding: '10px', marginBottom: '10px' }}>
         {messages.map((msg, i) => (
-          <p key={i}>
+          <p key={i} style={{ margin: '5px 0' }}>
             <strong>{msg.user}:</strong> {msg.text}
           </p>
         ))}
       </div>
-      <input
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Type a message"
-      />
-      <button onClick={sendMessage}>Send</button>
-      <div>
-        {suggestions.map((sug, i) => (
-          <button key={i} onClick={() => sendSuggestion(sug)}>{sug}</button>
-        ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Type a message"
+            style={{ flex: 1, padding: '8px' }}
+          />
+          <button onClick={sendMessage}>Send</button>
+        </div>
+        {isLoading ? (
+          <div>Loading suggestions...</div>
+        ) : (
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+            {suggestions.map((sug, i) => (
+              <button 
+                key={i} 
+                onClick={() => sendSuggestion(sug)}
+                style={{ fontSize: '0.9em' }}
+              >
+                {sug}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
