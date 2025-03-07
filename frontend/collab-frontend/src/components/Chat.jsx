@@ -22,6 +22,7 @@ import {
   Snackbar
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import MemoryRecall from './MemoryRecall';
 
 const Chat = () => {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ const Chat = () => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [aiMessages, setAiMessages] = useState([]);
   const [aiInput, setAiInput] = useState('');
-  const [activeTab, setActiveTab] = useState(0); // 0 for users, 1 for AI
+  const [activeTab, setActiveTab] = useState(0); // 0 for users, 1 for AI, 2 for Memory Recall
   const [suggestions, setSuggestions] = useState([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -176,7 +177,11 @@ const Chat = () => {
 
     socket.on('ai response', (response) => {
       if (activeTab === 1) {
-        setAiMessages(prev => [...prev, { role: 'assistant', content: response.message }]);
+        setAiMessages(prev => [...prev, { 
+          role: 'assistant', 
+          content: response.message,
+          timestamp: response.timestamp
+        }]);
       }
     });
 
@@ -276,7 +281,7 @@ const Chat = () => {
       const userMessage = { role: 'user', content: aiInput };
       setAiMessages(prev => [...prev, userMessage]);
       
-      socket.emit('ai message', { message: aiInput });
+      socket.emit('ai message', { text: aiInput });
       setAiInput('');
     } else if (!socket || !socket.connected) {
       setErrorMessage('Cannot send message: Not connected to server');
@@ -381,6 +386,7 @@ const Chat = () => {
           <Tabs value={activeTab} onChange={handleTabChange} sx={{ mb: 2 }}>
             <Tab label="Chat with Users" />
             <Tab label="Chat with AI" />
+            <Tab label="Memory Recall" />
           </Tabs>
         </Grid>
         
@@ -515,7 +521,7 @@ const Chat = () => {
               </Paper>
             </Grid>
           </>
-        ) : (
+        ) : activeTab === 1 ? (
           <Grid item xs={12}>
             <Paper sx={{ height: '70vh', p: 2, display: 'flex', flexDirection: 'column' }}>
               <Typography variant="h6" sx={{ mb: 2 }}>
@@ -574,6 +580,10 @@ const Chat = () => {
                 </Button>
               </Box>
             </Paper>
+          </Grid>
+        ) : (
+          <Grid item xs={12}>
+            <MemoryRecall />
           </Grid>
         )}
       </Grid>

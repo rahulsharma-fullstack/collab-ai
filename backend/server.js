@@ -8,6 +8,8 @@ const jwt = require('jsonwebtoken');
 const User = require('./models/User');
 const Message = require('./models/Message');
 const axios = require('axios');
+const Memory = require('./models/Memory');
+const { analyzeMessage } = require('./utils/memoryDetection');
 
 const app = express();
 const server = http.createServer(app);
@@ -209,6 +211,20 @@ io.on('connection', (socket) => {
       
       await message.save();
       
+      // Analyze message for memory creation
+      const analysis = analyzeMessage(data.text);
+      if (analysis.isImportant) {
+        const memory = new Memory({
+          type: analysis.type,
+          content: data.text,
+          originalMessage: message._id,
+          participants: [socket.userId, data.receiverId],
+          extractedDate: analysis.extractedDate,
+          createdBy: socket.userId
+        });
+        await memory.save();
+      }
+      
       // Emit to sender
       io.to(socket.userId).emit('private message', message);
       
@@ -232,18 +248,173 @@ io.on('connection', (socket) => {
   });
 
   socket.on('ai message', async (data) => {
+    console.log('Received AI message request:', data.text);
+    
     try {
-      // Simple AI response (replace with actual AI if available)
-      const aiResponse = {
-        message: `This is a response to: "${data.message}"`
-      };
+      if (!socket.userId) {
+        throw new Error('User not authenticated');
+      }
+
+      // Get all user's chats from the last 24 hours
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
       
-      socket.emit('ai response', aiResponse);
+      const recentMessages = await Message.find({
+        $or: [
+          { sender: socket.userId },
+          { receiver: socket.userId }
+        ],
+        timestamp: { $gte: oneDayAgo }
+      })
+      .sort('timestamp')
+      .populate('sender', 'username')
+      .populate('receiver', 'username');
+
+      // Format chat history for better context
+      const chatHistory = recentMessages.map(msg => {
+        const senderName = msg.sender === socket.userId ? 'You' : 
+                          msg.sender === 'AI_ASSISTANT' ? 'AI' : 
+                          msg.sender.username || 'Other';
+        const time = new Date(msg.timestamp).toLocaleTimeString();
+        return `[${time}] ${senderName}: ${msg.text}`;
+      }).join('\n');
+
+      // Get any scheduled meetings or important events
+      const meetings = await Memory.find({
+        participants: socket.userId,
+        type: 'meeting',
+        extractedDate: { $exists: true }
+      }).sort('extractedDate');
+
+      const meetingsContext = meetings.map(m => 
+        `Meeting: ${m.content} (${m.extractedDate})`
+      ).join('\n');
+
+      // Prepare a more focused prompt based on the user's question
+      let contextPrompt = '';
+      const question = data.text.toLowerCase();
+
+      if (question.includes('meeting') || question.includes('schedule')) {
+        contextPrompt = `
+Here are your recent meetings and schedules:
+${meetingsContext || 'No scheduled meetings found.'}
+
+Recent chat context:
+${chatHistory}
+
+Please help with this question about meetings/schedules: ${data.text}
+Focus on providing specific meeting times, participants, and any related details from the chat history.`;
+      } else {
+        contextPrompt = `
+Recent chat history:
+${chatHistory}
+
+Please help with this request: ${data.text}
+If it's about past conversations, I'll summarize the relevant parts.
+If it's about meetings or events, I'll check the schedule and provide details.
+Keep the response natural and conversational.`;
+      }
+
+      const response = await axios.post(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+        {
+          contents: [{
+            parts: [{
+              text: contextPrompt
+            }]
+          }]
+        }
+      );
+
+      const aiResponse = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.';
+
+      // Save both messages
+      const userMessage = new Message({
+        text: data.text,
+        sender: socket.userId,
+        receiver: 'AI_ASSISTANT',
+        timestamp: new Date(),
+        isAI: false
+      });
+      await userMessage.save();
+
+      const aiMessage = new Message({
+        text: aiResponse,
+        sender: 'AI_ASSISTANT',
+        receiver: socket.userId,
+        timestamp: new Date(),
+        isAI: true
+      });
+      await aiMessage.save();
+
+      // Check if AI's response contains any important information
+      const analysis = analyzeMessage(aiResponse);
+      if (analysis.isImportant) {
+        const memory = new Memory({
+          type: analysis.type,
+          content: aiResponse,
+          originalMessage: aiMessage._id,
+          participants: [socket.userId],
+          extractedDate: analysis.extractedDate,
+          createdBy: 'AI_ASSISTANT'
+        });
+        await memory.save();
+      }
+
+      socket.emit('ai response', {
+        message: aiResponse,
+        timestamp: new Date(),
+        isAI: true
+      });
+
     } catch (err) {
       console.error('AI message error:', err);
-      socket.emit('error', 'Failed to get AI response');
+      socket.emit('error', 'Failed to process AI message');
     }
   });
+});
+
+// Add new endpoint for memory recall
+app.get('/memories', authenticateToken, async (req, res) => {
+  try {
+    const { type, days = 30 } = req.query;
+    const query = {
+      participants: req.user.userId,
+      createdAt: { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
+    };
+    
+    if (type) {
+      query.type = type;
+    }
+
+    const memories = await Memory.find(query)
+      .populate('originalMessage')
+      .populate('participants', 'username')
+      .sort('-createdAt')
+      .limit(20);
+
+    // Use Gemini to summarize memories
+    const memoryTexts = memories.map(m => m.content).join('\n');
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        contents: [{
+          parts: [{
+            text: `Summarize these important points from chat messages. Focus on dates, decisions, and key information:\n\n${memoryTexts}`
+          }]
+        }]
+      }
+    );
+
+    const summary = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'No summary available';
+
+    res.json({
+      memories,
+      summary
+    });
+  } catch (err) {
+    console.error('Error fetching memories:', err);
+    res.status(500).json({ error: 'Error fetching memories' });
+  }
 });
 
 const PORT = process.env.PORT || 5000;

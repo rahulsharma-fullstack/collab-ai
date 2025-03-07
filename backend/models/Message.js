@@ -6,8 +6,7 @@ const messageSchema = new mongoose.Schema({
     required: true
   },
   sender: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    type: mongoose.Schema.Types.Mixed,
     required: true
   },
   receiver: {
@@ -18,6 +17,10 @@ const messageSchema = new mongoose.Schema({
   timestamp: {
     type: Date,
     default: Date.now
+  },
+  isAI: {
+    type: Boolean,
+    default: false
   }
 });
 
