@@ -1,0 +1,19 @@
+[33me28ba53[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;32mclean-backup[m[33m)[m HEAD@{0}: Branch: renamed refs/heads/temp_branch to refs/heads/main
+[33me28ba53[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;32mclean-backup[m[33m)[m HEAD@{2}: commit (initial): Initial commit with clean history
+[33m582ed24[m HEAD@{3}: commit: Clean commit without sensitive data
+[33mabbd859[m HEAD@{4}: reset: moving to HEAD~1
+[33m2a22e22[m HEAD@{5}: commit: gmail integration
+[33mabbd859[m HEAD@{6}: commit: gmail integration
+[33m846140c[m HEAD@{7}: commit: ai integrated
+[33m3b2abfc[m HEAD@{8}: commit: major changes to ui
+[33m11a8115[m HEAD@{9}: commit: v2
+[33mcdb5efb[m HEAD@{10}: commit: chat improvement
+[33m0bb3bb8[m HEAD@{11}: commit: frontend refined
+[33m5c16b95[m HEAD@{12}: commit: ai integrated test 1
+[33m49066ac[m HEAD@{13}: commit: Remove node_modules
+[33m042045e[m HEAD@{14}: commit: Remove node_modules
+[33me950975[m HEAD@{15}: commit: update
+[33m7fecd1f[m HEAD@{16}: commit: basic setup backend
+[33m82b6888[m HEAD@{17}: commit: basic setup
+[33mc9782d4[m HEAD@{18}: Branch: renamed refs/heads/main to refs/heads/main
+[33mc9782d4[m HEAD@{20}: commit (initial): Initial commit

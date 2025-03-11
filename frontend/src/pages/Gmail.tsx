@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Mail, RefreshCw, ExternalLink } from 'lucide-react';
+import { Mail, RefreshCw, ExternalLink, X } from 'lucide-react';
 import { API_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
 
@@ -21,6 +21,7 @@ const Gmail: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isIntegrated, setIsIntegrated] = useState(false);
+  const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -117,6 +118,7 @@ const Gmail: React.FC = () => {
         {emails.map((email) => (
           <div
             key={email.id}
+            onClick={() => setSelectedEmail(email)}
             className="border-b border-gray-200 hover:bg-gray-50 p-4 cursor-pointer"
           >
             <div className="flex justify-between items-start mb-2">
@@ -130,6 +132,39 @@ const Gmail: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {/* Email Modal */}
+      {selectedEmail && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-800">{selectedEmail.subject}</h2>
+              <button
+                onClick={() => setSelectedEmail(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-6 overflow-auto flex-1">
+              <div className="mb-4">
+                <p className="text-sm text-gray-600">
+                  <strong>From:</strong> {selectedEmail.from}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>To:</strong> {selectedEmail.to}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <strong>Date:</strong> {new Date(selectedEmail.date).toLocaleString()}
+                </p>
+              </div>
+              <div className="prose max-w-none">
+                <div dangerouslySetInnerHTML={{ __html: selectedEmail.body }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
