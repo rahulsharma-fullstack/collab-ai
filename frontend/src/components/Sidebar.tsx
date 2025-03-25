@@ -16,7 +16,7 @@ const Sidebar: React.FC = () => {
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center space-x-2">
           <Brain className="h-8 w-8 text-indigo-600" />
-          <h1 className="text-xl font-bold text-gray-800">Memora</h1>
+          <h1 className="text-xl font-bold text-gray-800">Memento</h1>
         </div>
       </div>
 

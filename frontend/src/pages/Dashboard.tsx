@@ -93,7 +93,7 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-white shadow rounded-lg mb-8">
+        {/* <div className="bg-white shadow rounded-lg mb-8">
           <div className="px-6 py-5 border-b border-gray-200">
             <h3 className="text-lg font-medium leading-6 text-gray-900">Recent Activity</h3>
           </div>
@@ -161,7 +161,7 @@ const Dashboard: React.FC = () => {
               </li>
             </ul>
           </div>
-        </div>
+        </div> */}
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="bg-white shadow rounded-lg">

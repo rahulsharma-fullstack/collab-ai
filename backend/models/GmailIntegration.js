@@ -1,19 +1,21 @@
 const mongoose = require('mongoose');
 const crypto = require('crypto');
 
-// Encryption helper functions
+const algorithm = 'aes-256-cbc';
+const key = crypto.randomBytes(32); // Replace with your secure key
+const iv = crypto.randomBytes(16); // Replace with your secure IV
+
 const encrypt = (text) => {
-  if (!text) return text;
-  const cipher = crypto.createCipher('aes-256-cbc', process.env.ENCRYPTION_KEY || 'your-encryption-key');
+  const cipher = crypto.createCipheriv(algorithm, key, iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  return encrypted;
+  return `${iv.toString('hex')}:${encrypted}`;
 };
 
-const decrypt = (text) => {
-  if (!text) return text;
-  const decipher = crypto.createDecipher('aes-256-cbc', process.env.ENCRYPTION_KEY || 'your-encryption-key');
-  let decrypted = decipher.update(text, 'hex', 'utf8');
+const decrypt = (encryptedText) => {
+  const [ivHex, encrypted] = encryptedText.split(':');
+  const decipher = crypto.createDecipheriv(algorithm, key, Buffer.from(ivHex, 'hex'));
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
   decrypted += decipher.final('utf8');
   return decrypted;
 };
@@ -26,15 +28,13 @@ const gmailIntegrationSchema = new mongoose.Schema({
   },
   accessToken: {
     type: String,
-    required: true,
-    set: encrypt,
-    get: decrypt
+    required: true
+    // Encryption should be handled externally
   },
   refreshToken: {
     type: String,
-    required: true,
-    set: encrypt,
-    get: decrypt
+    required: true
+    // Encryption should be handled externally
   },
   expiryDate: {
     type: Date,
@@ -50,4 +50,7 @@ const gmailIntegrationSchema = new mongoose.Schema({
   toObject: { getters: true }
 });
 
-module.exports = mongoose.model('GmailIntegration', gmailIntegrationSchema); 
+// Remove encryption/decryption logic from the schema
+// Handle encryption/decryption in the application logic
+
+module.exports = mongoose.model('GmailIntegration', gmailIntegrationSchema);

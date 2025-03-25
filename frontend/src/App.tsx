@@ -27,7 +27,7 @@ function App() {
     <AuthProvider>
       <SocketProvider>
         <Router>
-          <div className="flex h-screen bg-gray-50">
+          <div className="flex h-screen bg-gray-50 justify-center">
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
