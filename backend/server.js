@@ -151,23 +151,68 @@ app.post('/api/email-query', authenticateToken, async (req, res) => {
   if (!question) return res.status(400).json({ error: 'Question required' });
 
   try {
+    // Check ChromaDB health first
+    const { checkChromaHealth } = require('./utils/emailProcessor');
+    if (!(await checkChromaHealth())) {
+      return res.status(503).json({
+        error: 'Email service temporarily unavailable',
+        details: 'Vector store service is not responding'
+      });
+    }
+
     let vectorStore = app.locals.vectorStores.get(req.user.userId);
     if (!vectorStore) {
-      await processUserEmails(req.user.userId, app.locals.vectorStores);
-      vectorStore = app.locals.vectorStores.get(req.user.userId);
+      try {
+        await processUserEmails(req.user.userId, app.locals.vectorStores);
+        vectorStore = app.locals.vectorStores.get(req.user.userId);
+      } catch (processError) {
+        console.error('Failed to process emails:', processError);
+        return res.status(503).json({ 
+          error: 'Failed to process emails',
+          details: processError.message
+        });
+      }
       if (!vectorStore) return res.status(404).json({ 
         error: 'No emails processed yet',
         details: 'Please connect your email account first'
       });
     }
 
+    const lowerQuestion = question.toLowerCase();
+    let filter = {};
+
+    // Filter for sender if the question asks about a specific sender
+    if (lowerQuestion.includes('from')) {
+      const senderMatch = lowerQuestion.match(/from\s+([^\s]+)/);
+      if (senderMatch) {
+        const sender = senderMatch[1];
+        filter = { from: { $eq: sender } }; // Use Chroma's $eq operator for exact match
+      }
+    }
+
+    // For meeting-related queries, we'll rely on similarity search and post-filter
     const retriever = vectorStore.asRetriever({
-      k: 3,
-      searchType: 'similarity'
+      k: 10, // Increase to 10 to get more candidates for post-filtering
+      searchType: 'similarity',
+      filter: Object.keys(filter).length > 0 ? filter : undefined
     });
 
-    const relevantDocs = await retriever.getRelevantDocuments(question);
-    console.log('Retrieved documents:', relevantDocs.map(doc => doc.pageContent));
+    let relevantDocs = await retriever.getRelevantDocuments(question);
+    console.log('Retrieved documents:', relevantDocs.map(doc => ({
+      content: doc.pageContent,
+      metadata: doc.metadata
+    })));
+
+    // Post-filter for meeting-related queries or specific terms like "param"
+    if (lowerQuestion.includes('meeting') || lowerQuestion.includes('schedule')) {
+      relevantDocs = relevantDocs.filter(doc => {
+        const content = doc.pageContent.toLowerCase();
+        return content.includes('meeting') || content.includes('schedule') || content.includes('call');
+      });
+      if (lowerQuestion.includes('param')) {
+        relevantDocs = relevantDocs.filter(doc => doc.pageContent.toLowerCase().includes('param'));
+      }
+    }
 
     if (!relevantDocs || relevantDocs.length === 0) {
       return res.json({ 
@@ -176,11 +221,41 @@ app.post('/api/email-query', authenticateToken, async (req, res) => {
       });
     }
 
+    if (lowerQuestion.includes('last')) {
+      relevantDocs.sort((a, b) => new Date(b.metadata.date) - new Date(a.metadata.date));
+      relevantDocs = relevantDocs.slice(0, 1); // Take only the most recent email
+    }
+
     const contextText = relevantDocs.map(doc => doc.pageContent).join('\n\n');
 
-    const response = await llm.invoke(
-      `Based on these email excerpts:\n${contextText}\n\nQuestion: ${question}\n\nAnswer: `
-    );
+    let prompt = '';
+    if (lowerQuestion.includes('from')) {
+      prompt = `
+You are an AI assistant helping with email queries. The user asked: "${question}".
+Here are the relevant email excerpts:\n${contextText}\n\n
+Focus on identifying the email(s) from the specified sender. If the question asks for the "last" email, provide details from the most recent one (based on the Date field).
+Provide a concise summary including the sender, subject, date, and a brief snippet of the body.
+If no emails match the criteria, say so clearly.
+Answer: `;
+    } else if (lowerQuestion.includes('meeting') || lowerQuestion.includes('schedule')) {
+      prompt = `
+You are an AI assistant helping with email queries. The user asked: "${question}".
+Here are the relevant email excerpts:\n${contextText}\n\n
+Focus on identifying any meetings or scheduled events mentioned in the emails. Look for details like dates, times, participants (e.g., "param"), and purpose.
+If a specific person is mentioned (e.g., "param"), check if they are involved in any meetings.
+Provide a clear answer about whether a meeting exists, including details if found.
+If no meetings are found, say so clearly.
+Answer: `;
+    } else {
+      prompt = `
+You are an AI assistant helping with email queries. The user asked: "${question}".
+Here are the relevant email excerpts:\n${contextText}\n\n
+Provide a concise and relevant answer based on the email content. Focus on the user's question and extract specific details as needed.
+If the information isn't available, say so clearly.
+Answer: `;
+    }
+
+    const response = await llm.invoke(prompt);
 
     res.json({ 
       answer: response,
@@ -237,7 +312,14 @@ io.on('connection', (socket) => {
 
   socket.join(socket.userId);
 
-  processUserEmails(socket.userId, app.locals.vectorStores);
+  // Handle email processing errors gracefully
+  processUserEmails(socket.userId, app.locals.vectorStores).catch(error => {
+    console.error('Failed to process emails on connection:', error);
+    socket.emit('email-processing-error', {
+      message: 'Failed to process emails. Please check your Gmail connection.',
+      error: error.message
+    });
+  });
 
   socket.on('private message', async (data) => {
     try {

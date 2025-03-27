@@ -9,7 +9,11 @@ class OllamaEmbeddings extends Embeddings {
   }
 
   async embedQuery(text) {
-    const response = await this.api.post('/embeddings', { model: 'llama2', prompt: text });
+    const response = await this.api.post('/embeddings', { model: 'nomic-embed-text', prompt: text });
+    console.log('nomic-embed-text embedding response:', response.data);
+    if (!response.data.embedding || !Array.isArray(response.data.embedding)) {
+      throw new Error('Invalid embedding response from nomic-embed-text');
+    }
     return response.data.embedding;
   }
 
@@ -41,8 +45,8 @@ class OllamaLLM extends BaseLLM {
 
           console.log('Ollama /generate response:', response.data);
 
-          if (!response.data || typeof response.data.response !== 'string') {
-            throw new Error(`Invalid response: ${JSON.stringify(response.data)}`);
+          if (!response.data || !response.data.response) {
+            throw new Error('Invalid response from Ollama');
           }
 
           return {
@@ -56,11 +60,8 @@ class OllamaLLM extends BaseLLM {
         } catch (error) {
           console.error('Generation error:', error.message, error.response?.data);
           return {
-            text: 'Error: Failed to generate response from Ollama',
-            generationInfo: { 
-              modelName: 'llama2', 
-              error: error.message 
-            }
+            text: "I apologize, but I encountered an error processing your request.",
+            generationInfo: { error: error.message }
           };
         }
       })

@@ -8,6 +8,7 @@ import { API_URL } from '../config';
 const AIChat = () => {
   const [message, setMessage] = useState('');
   const [emailMode, setEmailMode] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const { messages, sendAIMessage, isTyping, setMessages } = useSocket();
   const { user } = useAuth();
@@ -26,6 +27,7 @@ const AIChat = () => {
 
     if (emailMode) {
       try {
+        setEmailLoading(true);
         const userMessage = {
           text: message,
           sender: user?._id || '',
@@ -69,6 +71,8 @@ const AIChat = () => {
           isAI: true
         };
         setMessages(prev => [...prev, errorMessage]);
+      } finally {
+        setEmailLoading(false);
       }
     } else {
       sendAIMessage(message);
@@ -122,7 +126,7 @@ const AIChat = () => {
               </div>
             </div>
           ))}
-        {isTyping && !emailMode && (
+        {(isTyping && !emailMode) || (emailLoading && emailMode) ? (
           <div className="flex justify-start">
             <div className="bg-gray-100 rounded-lg px-4 py-2">
               <div className="flex space-x-1">
@@ -132,7 +136,7 @@ const AIChat = () => {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
         <div ref={messagesEndRef} />
       </div>
 
