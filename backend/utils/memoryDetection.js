@@ -20,49 +20,65 @@ function extractDate(text) {
   return parsedDate || null;
 }
 
-function analyzeMessage(text) {
-  const meetingKeywords = ['meeting', 'appointment', 'schedule', 'call', 'conference'];
-  const deadlineKeywords = ['deadline', 'due date', 'by', 'until'];
-  const decisionKeywords = ['decided', 'agreed', 'conclusion', 'decision'];
+function parseDate(text) {
+  // Basic date parsing - could be enhanced with a library like chrono-node
+  const today = new Date();
   
-  const datePattern = /(?:\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?\b|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|\b(?:today|tomorrow|next week|next month)\b|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i;
-
-  const textLower = text.toLowerCase();
-  let type = null;
-  let isImportant = false;
-  let extractedDate = null;
-
-  // Check for meeting-related content
-  if (meetingKeywords.some(keyword => textLower.includes(keyword))) {
-    type = 'meeting';
-    isImportant = true;
+  if (text.includes('today')) {
+    return today;
   }
-  // Check for deadlines
-  else if (deadlineKeywords.some(keyword => textLower.includes(keyword))) {
-    type = 'deadline';
-    isImportant = true;
+  
+  if (text.includes('tomorrow')) {
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
+    return tomorrow;
   }
-  // Check for decisions
-  else if (decisionKeywords.some(keyword => textLower.includes(keyword))) {
-    type = 'decision';
-    isImportant = true;
-  }
-
-  // Extract date if present
-  const dateMatch = text.match(datePattern);
+  
+  // Try to parse explicit dates
+  const dateMatch = text.match(/\d{4}-\d{2}-\d{2}|\d{1,2}\/\d{1,2}\/\d{4}/);
   if (dateMatch) {
-    extractedDate = dateMatch[0];
-    isImportant = true;
-    if (!type) type = 'date_reference';
+    const parsed = new Date(dateMatch[0]);
+    return isNaN(parsed.getTime()) ? null : parsed;
   }
+  
+  return null;
+}
 
+function analyzeMessage(text) {
+  const lowerText = text.toLowerCase();
+  
+  // Meeting detection
+  if (lowerText.includes('meeting') || lowerText.includes('call') || lowerText.includes('discuss')) {
+    return {
+      isImportant: true,
+      type: 'meeting',
+      extractedDate: parseDate(lowerText)
+    };
+  }
+  
+  // Task detection
+  if (lowerText.includes('todo') || lowerText.includes('task') || lowerText.includes('deadline')) {
+    return {
+      isImportant: true,
+      type: 'task',
+      extractedDate: parseDate(lowerText)
+    };
+  }
+  
+  // Decision detection
+  if (lowerText.includes('decided') || lowerText.includes('agreed') || lowerText.includes('conclusion')) {
+    return {
+      isImportant: true,
+      type: 'decision',
+      extractedDate: null
+    };
+  }
+  
   return {
-    isImportant,
-    type,
-    extractedDate
+    isImportant: false,
+    type: 'general',
+    extractedDate: null
   };
 }
 
-module.exports = {
-  analyzeMessage
-}; 
+module.exports = { analyzeMessage };

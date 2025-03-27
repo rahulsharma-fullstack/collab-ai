@@ -7,9 +7,9 @@ interface Message {
   _id?: string;
   text: string;
   sender: string;
-  senderType: 'user' | 'ai';
+  senderType?: 'user' | 'ai' | 'email';
   receiver: string;
-  receiverType: 'user' | 'ai';
+  receiverType?: 'user' | 'ai' | 'email';
   timestamp: Date;
   isAI?: boolean;
 }
@@ -19,6 +19,7 @@ interface SocketContextType {
   sendMessage: (text: string, receiverId: string) => void;
   sendAIMessage: (text: string) => void;
   messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   isTyping: boolean;
   setIsTyping: (typing: boolean) => void;
 }
@@ -55,15 +56,7 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     newSocket.on('ai response', (response) => {
-      const aiMessage: Message = {
-        text: response.message,
-        sender: 'AI_ASSISTANT',
-        senderType: 'ai',
-        receiver: user._id,
-        receiverType: 'user',
-        timestamp: new Date(response.timestamp),
-        isAI: true
-      };
+      const aiMessage: Message = response.message;
       setMessages(prev => [...prev, aiMessage]);
     });
 
@@ -121,7 +114,15 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   return (
-    <SocketContext.Provider value={{ socket, sendMessage, sendAIMessage, messages, isTyping, setIsTyping }}>
+    <SocketContext.Provider value={{ 
+      socket, 
+      sendMessage, 
+      sendAIMessage, 
+      messages, 
+      setMessages,
+      isTyping, 
+      setIsTyping 
+    }}>
       {children}
     </SocketContext.Provider>
   );
@@ -133,4 +134,4 @@ export const useSocket = () => {
     throw new Error('useSocket must be used within a SocketProvider');
   }
   return context;
-}; 
+};

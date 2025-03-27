@@ -38,6 +38,9 @@ const Gmail: React.FC = () => {
     } catch (err: any) {
       if (err.response?.status === 404) {
         setIsIntegrated(false);
+      } else if (err.response?.data?.needsReauth) {
+        setIsIntegrated(false);
+        setError('Gmail authentication expired. Please reconnect your account.');
       } else {
         setError('Failed to check Gmail integration');
       }
@@ -46,6 +49,7 @@ const Gmail: React.FC = () => {
 
   const handleIntegrate = async () => {
     try {
+      setError(null);
       const response = await axios.get(`${API_URL}/api/gmail/auth-url`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
@@ -169,4 +173,4 @@ const Gmail: React.FC = () => {
   );
 };
 
-export default Gmail; 
+export default Gmail;

@@ -50,6 +50,17 @@ const gmailIntegrationSchema = new mongoose.Schema({
   toObject: { getters: true }
 });
 
+gmailIntegrationSchema.methods.isTokenExpired = function() {
+  return new Date() >= new Date(this.expiryDate);
+};
+
+gmailIntegrationSchema.methods.getAccessToken = async function() {
+  if (this.isTokenExpired()) {
+    throw new Error('Token expired');
+  }
+  return this.accessToken;
+};
+
 // Remove encryption/decryption logic from the schema
 // Handle encryption/decryption in the application logic
 

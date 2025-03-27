@@ -5,8 +5,8 @@ const GmailIntegration = require('../models/GmailIntegration');
 const { authenticateToken } = require('../middleware/auth');
 const { google } = require('googleapis');
 const jwt = require('jsonwebtoken');
+const { processUserEmails } = require('../utils/emailProcessor');
 
-// Get Gmail auth URL
 router.get('/auth-url', authenticateToken, async (req, res) => {
   try {
     const authUrl = gmailService.getAuthUrl();
@@ -17,18 +17,13 @@ router.get('/auth-url', authenticateToken, async (req, res) => {
   }
 });
 
-// Handle Gmail OAuth callback
 router.get('/callback', async (req, res) => {
   try {
     const { code } = req.query;
-    if (!code) {
-      throw new Error('No authorization code received');
-    }
+    if (!code) throw new Error('No authorization code received');
 
-    // Get tokens from the authorization code
     const tokens = await gmailService.getTokens(code);
     
-    // Set up temporary credentials to get user profile
     const oauth2Client = new google.auth.OAuth2(
       process.env.GMAIL_CLIENT_ID,
       process.env.GMAIL_CLIENT_SECRET,
@@ -36,40 +31,29 @@ router.get('/callback', async (req, res) => {
     );
     oauth2Client.setCredentials({ access_token: tokens.access_token });
 
-    // Get user email
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
     const profile = await gmail.users.getProfile({ userId: 'me' });
     const email = profile.data.emailAddress;
 
-    // Create a temporary token to securely pass data to the frontend
     const tempToken = jwt.sign(
-      { 
-        tokens,
-        email
-      },
+      { tokens, email },
       process.env.JWT_SECRET,
       { expiresIn: '5m' }
     );
 
-    // Redirect to frontend with the temporary token
     res.redirect(`${process.env.FRONTEND_URL}/gmail/callback?token=${tempToken}`);
-
   } catch (error) {
     console.error('Error in Gmail callback:', error);
     res.redirect(`${process.env.FRONTEND_URL}/gmail?error=auth_failed`);
   }
 });
 
-// Complete Gmail integration
 router.post('/complete-integration', authenticateToken, async (req, res) => {
   try {
     const { tempToken } = req.body;
-    
-    // Verify and decode the temporary token
     const decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
     const { tokens, email } = decoded;
 
-    // Save or update Gmail integration
     await GmailIntegration.findOneAndUpdate(
       { userId: req.user.userId },
       {
@@ -81,6 +65,8 @@ router.post('/complete-integration', authenticateToken, async (req, res) => {
       { upsert: true, new: true }
     );
 
+    await processUserEmails(req.user.userId, req.app.locals.vectorStores); // Use app.locals
+
     res.json({ message: 'Gmail integration successful' });
   } catch (error) {
     console.error('Error completing Gmail integration:', error);
@@ -88,7 +74,6 @@ router.post('/complete-integration', authenticateToken, async (req, res) => {
   }
 });
 
-// Get emails
 router.get('/emails', authenticateToken, async (req, res) => {
   try {
     const integration = await GmailIntegration.findOne({ userId: req.user.userId });
@@ -96,12 +81,39 @@ router.get('/emails', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Gmail not integrated' });
     }
 
-    const emails = await gmailService.getEmails(integration.accessToken);
-    res.json(emails);
+    try {
+      const accessToken = await integration.getAccessToken();
+      const emails = await gmailService.getEmails(accessToken);
+      res.json(emails);
+    } catch (error) {
+      if (error.message === 'Token expired') {
+        try {
+          const tokens = await gmailService.refreshToken(integration.refreshToken);
+          
+          // Update integration with new tokens
+          integration.accessToken = tokens.access_token;
+          integration.expiryDate = new Date(Date.now() + tokens.expires_in);
+          await integration.save();
+
+          // Retry fetching emails with new token
+          const emails = await gmailService.getEmails(tokens.access_token);
+          res.json(emails);
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+          // Force re-authentication if refresh fails
+          res.status(401).json({ 
+            error: 'Authentication failed', 
+            needsReauth: true 
+          });
+        }
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
     console.error('Error fetching emails:', error);
     res.status(500).json({ error: 'Failed to fetch emails' });
   }
 });
 
-module.exports = router; 
+module.exports = router;

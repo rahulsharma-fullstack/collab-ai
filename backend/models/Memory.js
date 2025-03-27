@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const memorySchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ['meeting', 'deadline', 'decision', 'other'],
+    enum: ['meeting', 'task', 'reminder', 'decision', 'general'],
     required: true
   },
   content: {
@@ -12,30 +12,25 @@ const memorySchema = new mongoose.Schema({
   },
   originalMessage: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Message',
-    required: true
+    ref: 'Message'
   },
   participants: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
-  date: {
-    type: Date,
-    required: false
-  },
   extractedDate: {
     type: Date,
     required: false
   },
   createdBy: {
-    type: mongoose.Schema.Types.Mixed,
+    type: String,
     required: true
   },
   creatorType: {
     type: String,
     enum: ['user', 'ai'],
-    required: true
+    default: 'user'
   }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Memory', memorySchema); 
+module.exports = mongoose.model('Memory', memorySchema);
