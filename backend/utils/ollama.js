@@ -33,7 +33,7 @@ class OllamaLLM extends BaseLLM {
       prompts.map(async (prompt) => {
         try {
           const response = await this.api.post('/generate', { 
-            model: 'llama2', 
+            model: 'gemma3:4b', // Switch to Gemma 3 4B
             prompt,
             stream: false,
             options: {
@@ -43,16 +43,16 @@ class OllamaLLM extends BaseLLM {
             }
           });
 
-          console.log('Ollama /generate response:', response.data);
+          console.log('Gemma 3 4B /generate response:', response.data);
 
           if (!response.data || !response.data.response) {
-            throw new Error('Invalid response from Ollama');
+            throw new Error('Invalid response from Gemma 3 4B');
           }
 
           return {
             text: response.data.response,
             generationInfo: {
-              modelName: 'llama2',
+              modelName: 'gemma3:4b',
               promptTokens: response.data.prompt_eval_count || 0,
               completionTokens: response.data.eval_count || 0
             }
@@ -69,7 +69,7 @@ class OllamaLLM extends BaseLLM {
 
     return {
       generations,
-      llmOutput: { modelName: 'llama2' }
+      llmOutput: { modelName: 'gemma3:4b' }
     };
   }
 

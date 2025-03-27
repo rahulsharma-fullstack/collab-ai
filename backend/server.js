@@ -179,31 +179,45 @@ app.post('/api/email-query', authenticateToken, async (req, res) => {
     }
 
     const lowerQuestion = question.toLowerCase();
-    let filter = {};
+    let searchQuery = question;
 
-    // Filter for sender if the question asks about a specific sender
+    // Extract the sender name for "from" queries to improve retrieval
+    let sender = null;
     if (lowerQuestion.includes('from')) {
       const senderMatch = lowerQuestion.match(/from\s+([^\s]+)/);
       if (senderMatch) {
-        const sender = senderMatch[1];
-        filter = { from: { $eq: sender } }; // Use Chroma's $eq operator for exact match
+        sender = senderMatch[1].toLowerCase();
+        searchQuery = sender; // Use the sender name as the search query for better embedding
       }
     }
 
-    // For meeting-related queries, we'll rely on similarity search and post-filter
+    // Retrieve more documents to ensure relevant emails are included
     const retriever = vectorStore.asRetriever({
-      k: 10, // Increase to 10 to get more candidates for post-filtering
-      searchType: 'similarity',
-      filter: Object.keys(filter).length > 0 ? filter : undefined
+      k: 20, // Increase to 20 to capture more candidates
+      searchType: 'similarity'
     });
 
-    let relevantDocs = await retriever.getRelevantDocuments(question);
+    let relevantDocs = await retriever.getRelevantDocuments(searchQuery);
     console.log('Retrieved documents:', relevantDocs.map(doc => ({
       content: doc.pageContent,
-      metadata: doc.metadata
+      metadata: doc.metadata,
+      score: doc.score // Log similarity scores
     })));
 
-    // Post-filter for meeting-related queries or specific terms like "param"
+    // Post-filter for sender if "from" is in the query
+    let senderFilteredDocs = [];
+    if (sender) {
+      senderFilteredDocs = relevantDocs.filter(doc => doc.metadata.from.toLowerCase().includes(sender));
+      console.log('Sender filtered documents:', senderFilteredDocs.map(doc => ({
+        content: doc.pageContent,
+        metadata: doc.metadata
+      })));
+    }
+
+    // Use sender-filtered docs if available; otherwise, fall back to all relevant docs
+    relevantDocs = senderFilteredDocs.length > 0 ? senderFilteredDocs : relevantDocs;
+
+    // Post-filter for meeting-related queries or specific terms
     if (lowerQuestion.includes('meeting') || lowerQuestion.includes('schedule')) {
       relevantDocs = relevantDocs.filter(doc => {
         const content = doc.pageContent.toLowerCase();
@@ -215,6 +229,17 @@ app.post('/api/email-query', authenticateToken, async (req, res) => {
     }
 
     if (!relevantDocs || relevantDocs.length === 0) {
+      // Fallback: If no emails match the sender filter, provide related emails mentioning the term
+      if (sender) {
+        relevantDocs = await retriever.getRelevantDocuments(sender);
+        relevantDocs = relevantDocs.filter(doc => doc.pageContent.toLowerCase().includes(sender));
+        if (relevantDocs.length > 0) {
+          return res.json({ 
+            answer: `I couldn’t find emails directly from ${sender}, but here are some related emails mentioning ${sender}.`,
+            context: 'Based on your emails'
+          });
+        }
+      }
       return res.json({ 
         answer: "I couldn't find any relevant emails to answer your question.",
         context: 'No relevant emails found'
@@ -250,7 +275,7 @@ Answer: `;
       prompt = `
 You are an AI assistant helping with email queries. The user asked: "${question}".
 Here are the relevant email excerpts:\n${contextText}\n\n
-Provide a concise and relevant answer based on the email content. Focus on the user's question and extract specific details as needed.
+Provide a concise answer based on the email content. If the query is searching for a term (e.g., "lucid"), list up to 3 matching emails with their sender, subject, and date. Include a brief snippet of the body if relevant.
 If the information isn't available, say so clearly.
 Answer: `;
     }
